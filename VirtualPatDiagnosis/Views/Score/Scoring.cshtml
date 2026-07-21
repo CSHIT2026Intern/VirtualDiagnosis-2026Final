@@ -1,0 +1,1194 @@
+﻿@model VirtualPatDiagnosis.Models.ScoringReportVM
+@using System
+@using System.Linq
+@{
+    ViewBag.Title = "成績報告";
+
+    var studentName = Model.DisplayName;
+    var examTitle = Model.Title;
+
+    var totalScore = Model.TotalScore; //實得分數
+    var totalMax = Model.TotalMax;  //總分數
+    var passScore = Model.PassScore;  //及格分數
+    var pass = Model.Pass;
+
+    var completed = Model.CompletedCount;
+    var totalItems = Model.TotalItems;
+
+    var percent = Model.Percent;
+    var circumference = Model.Circumference;
+    var dashOffset = Model.DashOffset;
+
+    var startedAt = Model.StartedAt ?? Model.StartedAt;
+    var endedAt = Model.EndedAt ?? Model.EndedAt;
+    var usedMins = Model.UsedMinutes;
+
+    var items = Model.Items; // List<ScoringReportItemVM>
+
+    // 給前端匯出（PDF / CSV）用的資料，統一序列化成一個 JS 物件，避免手動組字串跳脫出錯
+    var exportData = new
+    {
+        studentName,
+        examTitle,
+        totalScore,
+        totalMax,
+        passScore,
+        pass,
+        startedAt = startedAt?.ToString("yyyy/MM/dd HH:mm:ss") ?? "",
+        endedAt = endedAt?.ToString("yyyy/MM/dd HH:mm:ss") ?? "",
+        usedMins,
+        items = items.Select(it => new
+        {
+            no = it.No,
+            name = it.Name,
+            level = it.Level,
+            score = it.Score,
+            maxScore = it.MaxScore,
+            matchedPhrases = it.MatchedPhrases,
+            explanation = it.Explanation
+        })
+    };
+    var exportJson = System.Text.Json.JsonSerializer.Serialize(exportData).Replace("</", "<\\/");
+
+    // 正式評分表用：教案設定的測驗時間（來自 ExamCase.TimeLimit）
+    int? timeLimit = ViewBag.TimeLimit as int?;
+    var timeLimitText = timeLimit.HasValue ? $"{timeLimit}分鐘" : "未設定";
+}
+
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<style>
+    :root {
+        --paper: #FFF7ED; 
+        --paper-ink: #0F172A;
+        --paper-line: #FED7AA; 
+        --brand: #F59E0B; 
+        --brand-strong: #EA580C; 
+        --accent: #22C55E; 
+        --warn: #F59E0B; 
+        --danger: #EF4444; 
+        --muted: #64748B;
+        --card: #FFFFFF;
+        --time-bg: #FFF9F5; 
+        --btn-alt: #2563EB;
+    }
+
+    html, body {
+        height: 100%
+    }
+
+    body {
+        background: var(--paper);
+        color: var(--paper-ink);
+        font-family: "Microsoft JhengHei", Segoe UI, Roboto, system-ui, -apple-system, Arial, "Noto Sans", sans-serif;
+        font-size: 17px; 
+        line-height: 1.6;
+    }
+
+    /* ===== 頁面與卡片 ===== */
+    .page {
+        max-width: 1160px;
+        margin: auto;
+        padding: 12px 28px 36px; 
+    }
+
+    .h1 {
+        font-size: 2rem;
+        font-weight: 900
+    }
+
+    .h2 {
+        font-size: 1.2rem;
+        font-weight: 800
+    }
+
+    .small {
+        font-size: .95rem
+    }
+
+    .card {
+        background: var(--card);
+        border: 2px solid var(--paper-line);
+        border-radius: 16px;
+        box-shadow: 0 6px 20px rgba(0,0,0,.06)
+    }
+
+    .hr {
+        height: 2px;
+        background: var(--paper-line);
+        border: 0
+    }
+
+    
+    .card.p-4.mb-3:first-of-type {
+        margin-top: 8px;
+        margin-bottom: 28px;
+    }
+
+   
+    .header-card {
+        padding: 20px 28px 28px; 
+        border-radius: 16px;
+        background: var(--card);
+        margin-top: 20px;
+        margin-bottom: 32px;
+    }
+
+        
+        .header-card .large {
+            font-weight: 700;
+            padding: 6px 10px;
+            border-left: 4px solid var(--brand);
+            background: #FFF9EC;
+            border-radius: 8px;
+            margin-bottom: 18px; 
+            display: inline-block;
+        }
+
+    /* 三欄排版：左寬右窄，中間留空 */
+    .header-grid {
+        display: grid;
+        grid-template-columns: 1.6fr 1fr auto;
+        gap: 28px; /* 三欄間距拉大 */
+        align-items: start; /* 頂端對齊 */
+        margin-top: 12px; /* 標題與卡片之間的距離 */
+    }
+
+    /* 成績報告卡片 */
+    .score-box {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+        padding: 20px 24px;
+        border: 2px dashed var(--paper-line);
+        border-radius: 14px;
+        background: #FFFBEB;
+        height: auto; /* 不強制撐滿 */
+    }
+
+    /* 作答時間卡片 */
+    .time-box {
+        background: var(--time-bg);
+        border: 2px solid var(--paper-line);
+        border-radius: 14px;
+        padding: 20px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        height: auto;
+    }
+
+    /* 右側按鈕欄 */
+    .vertical-buttons {
+        width: 110px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px; /* 按鈕間距 */
+        margin-right: 6px;
+        align-self: start;
+    }
+
+    .score-number {
+        font-size: 2.4rem;
+        font-weight: 900
+    }
+
+    .score-detail {
+        font-weight: 700;
+        color: #374151
+    }
+
+    .score-pass {
+        color: var(--accent);
+        border: 2px solid var(--accent);
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-weight: 800
+    }
+
+    .score-fail {
+        color: var(--danger);
+        border: 2px solid var(--danger);
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-weight: 800
+    }
+
+    .donut {
+        width: 110px;
+        height: 110px;
+        min-width: 110px;
+    }
+
+        .donut text {
+            font-weight: 800;
+            font-size: 1rem;
+            fill: #111827
+        }
+
+        .donut .track {
+            stroke: #FFE4C7
+        }
+
+        .donut .fill {
+            stroke: var(--brand-strong);
+            transition: stroke-dashoffset .6s ease
+        }
+
+    .donut-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px
+    }
+
+    .donut-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-weight: 800
+    }
+
+    .donut-title {
+        color: #9A3412
+    }
+
+    .donut-pct {
+        font-size: 1.1rem;
+        color: #111827
+    }
+
+    .time-box {
+        background: var(--time-bg);
+        border: 2px solid var(--paper-line);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px
+    }
+
+    .time-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap
+    }
+
+    .time-label {
+        color: #6B7280;
+        font-weight: 700
+    }
+
+    .time-val {
+        font-weight: 800
+    }
+
+    .btn-export {
+        appearance: none;
+        border: none;
+        background: linear-gradient(180deg,#FDBA74,#F59E0B);
+        color: #2F1B0A;
+        font-weight: 900;
+        border-radius: 12px;
+        padding: 12px 18px;
+        cursor: pointer;
+        box-shadow: 0 6px 0 #E8790C,0 12px 16px rgba(0,0,0,.08);
+        transition: transform .05s ease, box-shadow .05s ease
+    }
+
+        .btn-export:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 7px 0 #E8790C,0 14px 20px rgba(0,0,0,.1)
+        }
+
+        .btn-export:active {
+            transform: translateY(1px);
+            box-shadow: 0 4px 0 #E8790C
+        }
+
+    /* 匯出下拉選單 */
+    .export-dropdown {
+        position: relative;
+    }
+
+    .export-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 50;
+        min-width: 168px;
+        background: #fff;
+        border: 2px solid var(--paper-line);
+        border-radius: 12px;
+        box-shadow: 0 10px 24px rgba(0,0,0,.14);
+        padding: 6px;
+    }
+
+        .export-menu.open {
+            display: block;
+        }
+
+        .export-menu button {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--paper-ink);
+            font-weight: 700;
+            border-radius: 8px;
+            padding: 10px 12px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+            .export-menu button:hover {
+                background: #FFF7ED;
+            }
+
+    /* ============ 正式評分表（匯出 PDF 專用格式）============ */
+    #officialFormWrap {
+        display: none;
+    }
+
+    .official-form {
+        width: 640px;
+        background: #fff;
+        color: #000;
+        padding: 16px 20px;
+        font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .of-title {
+        font-size: 1.15rem;
+        font-weight: 900;
+        border-bottom: 2px solid #000;
+        padding-bottom: 4px;
+        margin-bottom: 8px;
+    }
+
+    .of-top-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .of-top-left {
+        flex: 1;
+    }
+
+    .of-top-right {
+        width: 140px;
+        border: 2px solid #000;
+        border-radius: 4px;
+        padding: 8px 10px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+        font-weight: 700;
+        font-size: 12px;
+    }
+
+    .of-total-score {
+        border-top: 1px solid #999;
+        padding-top: 6px;
+    }
+
+    .of-line {
+        margin: 3px 0;
+    }
+
+    .of-checkbox-row {
+        margin: 3px 0;
+    }
+
+    .of-mark {
+        display: inline-block;
+        width: 12px;
+        font-weight: 900;
+    }
+
+    .of-mark-empty {
+        font-weight: 400;
+    }
+
+    .of-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 11px;
+    }
+
+        .of-table th, .of-table td {
+            border: 1px solid #000;
+            padding: 3px 5px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .of-table thead th {
+            background: #F3F4F6;
+            font-weight: 800;
+        }
+
+    .of-th-item {
+        text-align: left !important;
+        width: 40%;
+    }
+
+    .of-th-sub {
+        font-weight: 400;
+        font-size: 10px;
+    }
+
+    .of-col-num {
+        width: 9%;
+    }
+
+    .of-red {
+        color: #DC2626;
+        font-weight: 900;
+    }
+
+    .of-item-name {
+        text-align: left !important;
+    }
+
+    .of-mark-cell {
+        font-weight: 900;
+        font-size: 13px;
+    }
+
+    .of-na {
+        background: repeating-linear-gradient(45deg, #D1D5DB, #D1D5DB 4px, #E5E7EB 4px, #E5E7EB 8px);
+    }
+
+    .of-note-cell {
+        text-align: left !important;
+        font-size: 10px;
+        color: #374151;
+    }
+
+    .of-overall-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 11px;
+    }
+
+        .of-overall-table td {
+            border: 1px solid #000;
+            padding: 5px;
+            text-align: center;
+        }
+
+    .of-overall-label {
+        width: 15%;
+        font-weight: 800;
+        text-align: left !important;
+    }
+
+    .of-overall-head {
+        width: 8%;
+        font-weight: 800;
+        background: #F3F4F6;
+    }
+
+    .of-signature {
+        margin-top: 16px;
+        font-size: 11px;
+        color: #374151;
+    }
+
+    .btn-print {
+        appearance: none;
+        border: none;
+        background: linear-gradient(180deg,#93C5FD,#2563EB);
+        color: #fff;
+        font-weight: 900;
+        border-radius: 12px;
+        padding: 12px 18px;
+        cursor: pointer;
+        box-shadow: 0 6px 0 #1E40AF,0 12px 16px rgba(0,0,0,.08);
+        transition: transform .05s ease, box-shadow .05s ease
+    }
+
+        .btn-print:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 7px 0 #1E40AF,0 14px 20px rgba(0,0,0,.1)
+        }
+
+        .btn-print:active {
+            transform: translateY(1px);
+            box-shadow: 0 4px 0 #1E40AF
+        }
+
+    /* ===== 題號索引 ===== */
+    .index-card {
+        background: #FFF1E6;
+        border: 2px solid var(--paper-line);
+        padding-top: 20px;
+        padding-bottom: 16px;
+    }
+
+    .index-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px
+    }
+
+    .index-title {
+        font-weight: 1000;
+        color: #9A3412;
+    }
+
+    .circle-bar {
+        display: flex;
+        flex-wrap: wrap;
+        column-gap: 10px;
+        row-gap: 10px; /* 題號圈圈間距 */
+    }
+
+    .circle {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 2px solid #FCD34D;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .95rem;
+        font-weight: 900;
+        cursor: pointer
+    }
+
+        .circle.done {
+            background: #DCFCE7;
+            border-color: #86EFAC
+        }
+
+        .circle.partial {
+            background: #FEF9C3;
+            border-color: #FDE68A
+        }
+
+        .circle.miss {
+            background: #FEE2E2;
+            border-color: #FCA5A5
+        }
+
+    /* ✅ 題號索引與下一個卡片距離 */
+    .index-card + .card {
+        margin-top: 22px;
+    }
+
+    /* ===== 每題內容與回饋 ===== */
+    .qpanel {
+        border: 2px solid var(--paper-line);
+        padding: 24px;
+    }
+
+        .qpanel.d-none {
+            display: none
+        }
+
+        .qpanel + .qpanel {
+            margin-top: 26px;
+        }
+        /* 每題之間間距 */
+        .qpanel .h2 {
+            margin-bottom: 10px;
+        }
+
+        .qpanel .hr {
+            margin: 14px 0;
+        }
+
+    .kv {
+        color: #475569
+    }
+
+        .kv + .kv {
+            margin-top: 8px;
+        }
+
+
+
+    .feedback-card {
+        margin-top: 1.5rem; /* 與上方保持間距 */
+        padding: 1rem 1.5rem; /* 內距再大一點，文字不會太擠 */
+        border-radius: 8px;
+    }
+        /* 回饋卡內距 */
+        .feedback-card .h2 {
+            margin-bottom: 10px;
+        }
+
+    /* 固定右下：結束閱覽（保持你原本按鈕樣式） */
+    .float-end {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 40
+    }
+
+    .btn-end {
+        appearance: none;
+        border: none;
+        background: #111827;
+        color: #fff;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font-weight: 900;
+        box-shadow: 0 8px 16px rgba(0,0,0,.2);
+        cursor: pointer
+    }
+
+        .btn-end:hover {
+            opacity: .92
+        }
+
+    /* 一般連結去底線（不影響按鈕） */
+    a {
+        text-decoration: none;
+    }
+
+
+    #showAllBtn.btn {
+        border: 2px solid #EAB98F;
+        background: linear-gradient(180deg, #FFF7EF, #FFE7CF);
+        color: #7A4A23;
+        font-weight: 900;
+        border-radius: 12px;
+        padding: .35rem .7rem;
+        box-shadow: 0 2px 0 #E3A36F, 0 6px 14px rgba(0,0,0,.04);
+    }
+
+        #showAllBtn.btn:hover {
+            filter: brightness(1.02);
+        }
+
+        #showAllBtn.btn:active {
+            transform: translateY(1px);
+            box-shadow: 0 1px 0 #E3A36F;
+        }
+
+    /* 1) 作答時間：整塊置中 */
+    .time-box {
+        text-align: center;
+        align-items: center; /* flex 內容水平置中 */
+    }
+
+        .time-box .h2 {
+            text-align: center;
+        }
+
+    .time-row {
+        justify-content: center;
+    }
+
+    /* 2) 題號索引標題：更大更粗更穩 */
+    .index-title {
+        font-size: 1.35rem; /* 原本偏小，放大一階 */
+        font-weight: 900; /* 維持最粗 */
+        letter-spacing: .3px;
+    }
+
+    /* 3) items 細項說明、回饋說明：大字＋粗體＋好看一點的顏色 */
+    .kv { /* 每題的說明行 */
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #7A4A23; /* 橘棕，和整體橘系一致 */
+    }
+
+    .feedback-card, .feedback-card p, .feedback-card li {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #6B3A1E; /* 比 kv 深一點，閱讀性高 */
+    }
+
+    /* 4) 題目內容區塊：邊框更粗、更有「活性」 */
+    .qpanel {
+        position: relative;
+        border-width: 3px; /* 原 2px -> 3px */
+        border-style: solid;
+        border-color: var(--paper-line);
+        border-radius: 16px; /* 更圓潤 */
+        background: linear-gradient(180deg, #FFFCF5, #FFF7ED);
+        box-shadow: 0 6px 18px rgba(0,0,0,.06);
+        transition: transform .15s ease, box-shadow .15s ease;
+        padding: 26px; /* 稍微加大內距，配合粗框 */
+    }
+        /* 左側品牌色強調條，讓版面更有節奏感 */
+        .qpanel::before {
+            content: "";
+            position: absolute;
+            left: -3px; /* 與外框對齊 */
+            top: 12px;
+            bottom: 12px;
+            width: 6px;
+            border-radius: 8px;
+            background: linear-gradient(180deg, var(--brand), var(--brand-strong));
+            opacity: .9;
+        }
+        /* hover 微互動（活性） */
+        .qpanel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 22px rgba(0,0,0,.09);
+        }
+
+    /* 題號圈圈也給一點活性（可選） */
+    .circle {
+        transition: transform .08s ease, box-shadow .12s ease;
+    }
+
+        .circle:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(0,0,0,.06);
+        }
+
+    /* 小調整：時間卡標題顏色更明確、回饋卡與上一塊距離 */
+    .time-box .h2 {
+        color: #9A3412;
+    }
+
+    .feedback-card {
+        margin-top: 22px;
+    }
+    /* 狀態 Badge 共用樣式 */
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px; /* icon 與文字間距 */
+        padding: 6px 12px;
+        border-radius: 999px; /* 膠囊型 */
+        font-size: 1rem; /* 統一字體大小 */
+        font-weight: 800; /* 粗體 */
+        line-height: 1.3;
+    }
+
+    /* 完全做到 */
+    .badge-done {
+        background: #DCFCE7; /* 淺綠底 */
+        color: #166534; /* 深綠字 */
+        border: 2px solid #16a34a;
+    }
+
+    /* 部分做到 */
+    .badge-partial {
+        background: #FEF9C3; /* 淺黃底 */
+        color: #92400e; /* 深黃字 */
+        border: 2px solid #eab308;
+    }
+
+    /* 未做到 */
+    .badge-miss {
+        background: #FEE2E2; /* 淺紅底 */
+        color: #991b1b; /* 深紅字 */
+        border: 2px solid #dc2626;
+    }
+
+    /* Badge 裡的 icon */
+    .badge i {
+        font-size: 1.1rem; /* icon 比文字大一點 */
+    }
+</style>
+
+<div class="page">
+    <!-- 頁首：標題與三分區 -->
+    <div class="card p-4 mb-3 header-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <div class="header-titlebar-text">考生：@studentName　｜　測驗：@examTitle</div>
+            </div>
+        </div>
+
+        <div class="header-grid">
+            <!-- 左：分數 + 完成度 donut -->
+            <div class="score-box">
+                <div class="h1">成績報告</div>
+                <div>
+                    <div>
+                        <div class="score-number">@totalScore <span class="text-muted" style="font-weight:700">/ @totalMax</span></div>
+                        <div class="score-detail">總分數：@totalMax</div>
+                        <div class="score-detail">實得分數：@totalScore</div>
+                        <div class="score-detail">及格分數：@passScore</div>
+                        <div class="mt-1">
+                            @if (pass)
+                            {
+                                <span class="score-pass">通過</span>
+                            }
+                            else
+                            {
+
+                                <span class="score-fail">未通過</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="donut-wrap">
+                    <div class="donut-head">
+                        <span class="donut-title">完成度</span>
+                        <span class="donut-pct">@Math.Round(percent * 100)%</span>
+                    </div>
+                    <svg class="donut" viewBox="0 0 100 100" aria-label="完成度">
+                        <circle class="track" cx="50" cy="50" r="36" stroke-width="12" fill="none"></circle>
+                        <circle class="fill" cx="50" cy="50" r="36" stroke-width="12" fill="none"
+                                stroke-dasharray="@circumference" stroke-dashoffset="@dashOffset" stroke-linecap="round"></circle>
+                        <text x="50" y="55" text-anchor="middle">@completed/@totalItems</text>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- 中：時間色塊 -->
+            <div class="time-box">
+                <div class="h2" style="color:#E0C2B7">作答時間</div>
+                <div class="time-row"><div class="time-label">開始</div><div class="time-val">@startedAt?.ToString("yyyy/MM/dd HH:mm:ss")</div></div>
+                <div class="time-row"><div class="time-label">結束</div><div class="time-val">@endedAt?.ToString("yyyy/MM/dd HH:mm:ss")</div></div>
+                <div class="time-row"><div class="time-label">用時</div><div class="time-val">@usedMins 分鐘</div></div>
+            </div>
+
+            <!-- 右：匯出 / 列印 -->
+            <div class="vertical-buttons">
+                <div class="export-dropdown">
+                    <button class="btn-export" type="button" id="exportToggleBtn">匯出 ▾</button>
+                    <div class="export-menu" id="exportMenu">
+                        <button type="button" id="exportPdfBtn"><i class="fa-solid fa-file-pdf"></i> 匯出 PDF</button>
+                        <button type="button" id="exportCsvBtn"><i class="fa-solid fa-file-excel"></i> 匯出 Excel/CSV</button>
+                    </div>
+                </div>
+                <button class="btn-print" onclick="window.print()">列印</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 題號索引（橘黃區塊） -->
+    <div class="card index-card p-4 mb-3">
+        <div class="index-head">
+            <div class="index-title">題號索引</div>
+            <button id="showAllBtn" class="btn btn-outline-secondary btn-sm">顯示全部題目 ▾</button>
+        </div>
+
+        <div class="circle-bar">
+            @for (int i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                // 🔧 修正：改用 it.Level 文字本身判斷（用 ScoringReportVM 既有的
+                // IsDone/IsPartial/IsMiss），不要再用 Score == MaxScore 重新猜。
+                // 之前用 Score == MaxScore 猜，只要 MaxScore 剛好是 0（例如資料有誤），
+                // 0 == 0 就會被誤判成「done」，跟旁邊實際印出的 Level 文字互相矛盾，
+                // 出現「沒有做到」卻亮綠燈的狀況。
+                var cls = ScoringReportVM.IsDone(it.Level) ? "done"
+                    : (ScoringReportVM.IsPartial(it.Level) ? "partial" : "miss");
+
+                <div class="circle @cls" data-target="#q-@it.No" title="項目 #@it.No">@it.No</div>
+            }
+        </div>
+    </div>
+
+    @for (int i = 0; i < items.Count; i++)
+    {
+        var it = items[i];
+        var level = ScoringReportVM.IsDone(it.Level) ? "done"
+            : (ScoringReportVM.IsPartial(it.Level) ? "partial" : "miss");
+        var badge = level == "done" ? "badge-done" : (level == "partial" ? "badge-partial" : "badge-miss");
+        var icon = level == "done" ? "fa-check-circle"
+            : (level == "partial" ? "fa-exclamation-circle" : "fa-times-circle");
+
+
+        <div class="card p-4 mb-3 qpanel @(i > 0 ? "d-none" : "")" id="q-@it.No">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="h2">@it.No. @it.Name</div>
+                <span class="badge @badge"><i class="fa-solid @icon"></i> @it.Level</span>
+            </div>
+            <hr class="hr" />
+            <div class="kv">得分：<strong>@it.Score</strong> / @it.MaxScore</div>
+
+            @* 應有關鍵詞 *@
+            @if (!string.IsNullOrWhiteSpace(it.MatchedPhrases))
+            {
+                <div class="kv">應有關鍵詞：@it.MatchedPhrases</div>
+            }
+            @* 評分規則條列 *@
+            @if (it.ScoringRules != null && it.ScoringRules.Count > 0)
+            {
+                <div class="kv">
+                    <strong>評分規則：</strong>
+                    <ul>
+                    @foreach (var rule in it.ScoringRules)
+                    {
+                        <li>
+                            <span class="fw-bold">@rule.Level</span>：@rule.Score 分
+                            @if (!string.IsNullOrWhiteSpace(rule.Description))
+                            {
+                                <span>－@rule.Description</span>
+                            }
+                        </li>
+                    }
+                    </ul>
+                </div>
+            }
+            @* 該生實際提及（本次作答的 MatchedPhrases） *@
+            @if (!string.IsNullOrWhiteSpace(it.Explanation))
+            {
+                <div class="kv">該生提及：@it.Explanation</div>
+            }
+        </div>
+    }
+
+    <!-- 回饋 -->
+    <div class="card p-4 mb-5 feedback-card">
+        <div class="h2" style="color:#9A3412">回饋</div>
+        <div>@(ViewBag.Summary ?? "建議加強病史詢問的完整度，並注意身體檢查流程的連貫與覆核。")</div>
+    </div>
+
+    <!-- 右下固定：結束閱覽 -->
+    <div class="float-end">
+        <a class="btn-end" href="@Url.Action("Login", "Account")">結束閱覽</a>
+    </div>
+</div>
+
+<!-- ============ 正式評分表（畫面上不顯示，只在匯出 PDF 時擷取） ============ -->
+<div id="officialFormWrap">
+    <div class="official-form">
+        <div class="of-title">評分表</div>
+
+        <div class="of-top-row">
+            <div class="of-top-left">
+                <div class="of-line"><span class="of-mark">■</span>測驗項目：@examTitle</div>
+                <div class="of-checkbox-row">
+                    <span class="of-mark">■</span>病史詢問　　
+                    <span class="of-mark of-mark-empty">□</span>醫病溝通與衛教
+                </div>
+                <div class="of-checkbox-row">
+                    <span class="of-mark of-mark-empty">□</span>身體檢查　　
+                    <span class="of-mark of-mark-empty">□</span>病情解釋及臨床處置
+                </div>
+                <div class="of-line"><span class="of-mark">■</span>測驗時間：@timeLimitText</div>
+            </div>
+            <div class="of-top-right">
+                <div>滿分：@totalMax 分</div>
+                <div class="of-total-score">總得分：@totalScore</div>
+            </div>
+        </div>
+
+        <div class="of-line" style="margin-top:8px;">
+            <span class="of-mark">■</span>測驗考生：@studentName　　　　准考證編號：＿＿＿＿＿＿＿＿＿＿
+        </div>
+
+        <table class="of-table">
+            <thead>
+                <tr>
+                    <th rowspan="2" class="of-th-item">評分項目：<br /><span class="of-th-sub">是否問及下列項目</span></th>
+                    <th colspan="3">評量考生</th>
+                    <th rowspan="2">註解</th>
+                </tr>
+                <tr>
+                    <th class="of-col-num"><span class="of-red">0</span><br />沒有做到</th>
+                    <th class="of-col-num"><span class="of-red">1</span><br />部分做到</th>
+                    <th class="of-col-num"><span class="of-red">2</span><br />完全做到</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (int i = 0; i < items.Count; i++)
+                {
+                    var it = items[i];
+                    // 部分做到（1分）是否適用：若這一題滿分只有1分，代表只有「有/沒有」兩種狀態，沒有「部分」這個級距
+                    var partialNA = it.MaxScore <= 1;
+                    // 依「實際測驗得到的分數」判斷要打勾在哪一欄，不是憑印象或預設值
+                    var markMiss = it.Score <= 0;
+                    var markPartial = !partialNA && it.Score > 0 && it.Score < it.MaxScore;
+                    var markDone = it.MaxScore > 0 && it.Score >= it.MaxScore;
+                    <tr>
+                        <td class="of-item-name">@(i + 1). @it.Name</td>
+                        <td class="of-mark-cell">@(markMiss ? "✓" : "")</td>
+                        <td class="of-mark-cell @(partialNA ? "of-na" : "")">@(partialNA ? "" : (markPartial ? "✓" : ""))</td>
+                        <td class="of-mark-cell">@(markDone ? "✓" : "")</td>
+                        <td class="of-note-cell">@it.Explanation</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <table class="of-overall-table">
+            <tr>
+                <td rowspan="2" class="of-overall-label">您認為考生整體<br />表現如何：</td>
+                <td class="of-overall-head">說明</td>
+                <td>差<br />1分</td>
+                <td>待加強<br />2分</td>
+                <td>普通<br />3分</td>
+                <td>良好<br />4分</td>
+                <td>優秀<br />5分</td>
+            </tr>
+            <tr>
+                <td class="of-overall-head">評分</td>
+                <td colspan="5"></td>
+            </tr>
+        </table>
+
+        <div class="of-signature">
+            評分考官簽名：＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿＿　（本表由系統依實際作答紀錄自動產生，如需人工複核請於此簽章）
+        </div>
+    </div>
+</div>
+
+    <script>
+        // 匯出用資料（由後端序列化好，避免前端手動組字串跳脫出錯）
+        const reportExportData = @Html.Raw(exportJson);
+
+        // ============ 匯出下拉選單開關 ============
+        (function () {
+            const toggleBtn = document.getElementById('exportToggleBtn');
+            const menu = document.getElementById('exportMenu');
+
+            toggleBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                menu.classList.toggle('open');
+            });
+
+            document.addEventListener('click', function (e) {
+                if (!menu.contains(e.target) && e.target !== toggleBtn) {
+                    menu.classList.remove('open');
+                }
+            });
+        })();
+
+        // ============ 匯出 CSV / Excel ============
+        function csvEscape(val) {
+            const s = (val === null || val === undefined) ? '' : String(val);
+            if (/[",\r\n]/.test(s)) {
+                return '"' + s.replace(/"/g, '""') + '"';
+            }
+            return s;
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function exportCsv() {
+            const d = reportExportData;
+            const rows = [];
+            rows.push(['考生', d.studentName]);
+            rows.push(['測驗', d.examTitle]);
+            rows.push(['總分數', d.totalMax]);
+            rows.push(['實得分數', d.totalScore]);
+            rows.push(['及格分數', d.passScore]);
+            rows.push(['結果', d.pass ? '通過' : '未通過']);
+            rows.push(['開始時間', d.startedAt]);
+            rows.push(['結束時間', d.endedAt]);
+            rows.push(['用時（分鐘）', d.usedMins]);
+            rows.push([]);
+            rows.push(['題號', '項目', '評級', '得分', '滿分', '該生提及']);
+            d.items.forEach(function (it) {
+                rows.push([it.no, it.name, it.level, it.score, it.maxScore, it.explanation]);
+            });
+
+            const csv = rows.map(function (r) { return r.map(csvEscape).join(','); }).join('\r\n');
+            // 加上 UTF-8 BOM，避免 Excel 開啟中文亂碼
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            downloadBlob(blob, '成績報告_' + d.studentName + '_' + d.examTitle + '.csv');
+        }
+
+        // ============ 匯出 PDF（正式評分表格式） ============
+        function exportPdf() {
+            const exportBtn = document.getElementById('exportPdfBtn');
+            const originalText = exportBtn.textContent;
+            exportBtn.disabled = true;
+            exportBtn.textContent = '匯出中…';
+
+            // 正式評分表平常是隱藏的，只有匯出當下才暫時顯示出來給 html2canvas 擷取
+            const formWrap = document.getElementById('officialFormWrap');
+            formWrap.style.display = 'block';
+
+            const container = formWrap.querySelector('.official-form');
+            const opt = {
+                margin: 8,
+                filename: '評分表_' + reportExportData.studentName + '_' + reportExportData.examTitle + '.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['css', 'legacy'] }
+            };
+
+            html2pdf().set(opt).from(container).save().then(function () {
+                restoreAfterPdf();
+            }).catch(function (err) {
+                console.error('PDF 匯出失敗', err);
+                alert('匯出 PDF 失敗，請稍後再試一次。');
+                restoreAfterPdf();
+            });
+
+            function restoreAfterPdf() {
+                formWrap.style.display = 'none';
+                exportBtn.disabled = false;
+                exportBtn.textContent = originalText;
+            }
+        }
+
+        document.getElementById('exportCsvBtn').addEventListener('click', function () {
+            document.getElementById('exportMenu').classList.remove('open');
+            exportCsv();
+        });
+        document.getElementById('exportPdfBtn').addEventListener('click', function () {
+            document.getElementById('exportMenu').classList.remove('open');
+            exportPdf();
+        });
+
+        // 題號點擊切換顯示的卡片（保留你的資料結構）
+        (function(){
+          const pills = document.querySelectorAll('.circle');
+          const panels = document.querySelectorAll('.qpanel');
+          pills.forEach(p => {
+            p.addEventListener('click', () => {
+              const target = document.querySelector(p.getAttribute('data-target'));
+              if(!target) return;
+              panels.forEach(x => x.classList.add('d-none'));
+              target.classList.remove('d-none');
+              // 展開模式下也允許單獨切換（不影響「顯示全部」狀態）
+            });
+          });
+        })();
+
+        // 「顯示全部題目」：一次展開/收合所有 qpanel
+        (function(){
+      const btn = document.getElementById('showAllBtn');
+      const panels = document.querySelectorAll('.qpanel');
+
+      btn.addEventListener('click', function(){
+        const expanded = btn.getAttribute('data-expanded') === 'true';
+        if (expanded) {
+          // 收合：只顯示第一題
+          panels.forEach((p,i)=> p.classList.toggle('d-none', i>0));
+          btn.textContent = '顯示全部題目 ▾';
+          btn.setAttribute('data-expanded', 'false');
+        } else {
+          // 展開：全部顯示
+          panels.forEach(p=> p.classList.remove('d-none'));
+          btn.textContent = '收合題目 ▴';
+          btn.setAttribute('data-expanded', 'true');
+        }
+      });
+    })();
+
+    </script>

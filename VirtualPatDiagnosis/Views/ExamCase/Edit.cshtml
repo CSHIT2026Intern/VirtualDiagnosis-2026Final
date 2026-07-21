@@ -1,0 +1,30 @@
+@model VirtualPatDiagnosis.Models.ExamCase
+@using Microsoft.AspNetCore.Mvc.Controllers
+
+@{
+    var actionDescriptor = ViewContext.ActionDescriptor as ControllerActionDescriptor;
+    var actionName = actionDescriptor?.ActionName ?? "Unknown";
+}
+
+<h2>@actionName 題組</h2>
+
+<form asp-action="@actionName">
+    <div class="form-group">
+        <label asp-for="Title"></label>
+        <input asp-for="Title" class="form-control" />
+    </div>
+    <div class="form-group">
+        <label asp-for="Description"></label>
+        <textarea asp-for="Description" class="form-control"></textarea>
+    </div>
+    <div class="form-group">
+        <label asp-for="PassScore"></label>
+        <input asp-for="PassScore" class="form-control" />
+    </div>
+    <div class="form-group">
+        <label asp-for="TimeLimit"></label>
+        <input asp-for="TimeLimit" class="form-control" />
+    </div>
+    <button type="submit" class="btn btn-success">儲存</button>
+    <a asp-action="Index" class="btn btn-secondary">取消</a>
+</form>

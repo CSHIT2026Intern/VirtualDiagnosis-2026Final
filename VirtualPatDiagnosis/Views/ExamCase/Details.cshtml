@@ -1,0 +1,557 @@
+﻿@using System.Text.Json
+
+@functions {
+    public class KeyPhraseViewModel
+    {
+        public string phrase { get; set; }
+    }
+    public class ScoringRuleViewModel {
+        public string Level { get; set; }
+        public int Score { get; set; }
+        public string? Description { get; set; }
+    }
+}
+
+@model VirtualPatDiagnosis.Models.ExamCase
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@Model.Title - 詳細資料</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- SweetAlert2 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        body {
+            background-color: #e0f7fa;
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: bold;
+            padding: 20px;
+        }
+
+        .section-box {
+            background-color: #ffffff;
+            border: 2px solid #b2ebf2;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+
+        h2, h3, h4, h5 {
+            color: #00796b;
+            font-weight: bold;
+        }
+
+        .btn-custom {
+            background-color: #0097a7;
+            color: white;
+            font-weight: bold;
+        }
+
+            .btn-custom:hover {
+                background-color: #007c91;
+            }
+
+        .card {
+            background-color: #ffffff;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+            border: 2px solid #b2ebf2;
+            border-radius: 10px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="section-box">
+            <div class="d-flex justify-content-between align-items-start">
+                <h3>病人資料</h3>
+                <a asp-controller="ExamCase" asp-action="AddQ" class="btn btn-outline-dark btn-lg">返回</a>
+
+            </div>
+            <h2>@Model.Title</h2>
+            <p>@Model.Description</p>
+            <p>✅ 通過分數：@Model.PassScore</p>
+            <p>⏱️ 時間限制：@Model.TimeLimit 分鐘</p>
+        </div>
+        <div class="section-box">
+            <h3>病人資料</h3>
+            <button id="add-patient-btn" class="btn btn-custom mb-3">新增病人資料</button>
+            <div id="patient-container" class="d-flex flex-wrap gap-3">
+                @foreach (var patient in Model.PatientProfiles ?? new List<VirtualPatDiagnosis.Models.PatientProfile>())
+                {
+                    <div class="card patient-card me-3 mb-3" data-id="@patient.Id" style="min-width: 300px;">
+                        <div class="display-mode">
+                            <h5 class="text-primary fw-bold">👤 @patient.Name（@patient.Age 歲）</h5>
+                            <p>🕡️ 主託：@patient.Complaint</p>
+                            <p>📖 現在病史：@patient.CurrentHistory</p>
+                            <p>📚 過去病史：@patient.PastHistory</p>
+                            <p>👪 家族病史：@patient.FamilyHistory</p>
+                            <p>💊 藥物史：@patient.DrugHistory</p>
+                            <p>📄 其他病史：@patient.RestrictionRules</p>
+                            <div class="mt-2">
+                                <button class="btn btn-outline-primary btn-sm me-2 edit-patient-btn">編輯</button>
+                                <button class="btn btn-outline-danger btn-sm delete-patient-btn" data-id="@patient.Id">刪除</button>
+
+                            </div>
+                        </div>
+                        <div class="edit-mode" style="display:none;">
+                            <input type="text" class="form-control mb-2 edit-name" placeholder="姓名" value="@patient.Name" />
+                            <input type="number" class="form-control mb-2 edit-age" placeholder="年齡" value="@patient.Age" />
+                            <textarea class="form-control mb-2 edit-complaint" placeholder="主託">@patient.Complaint</textarea>
+                            <textarea class="form-control mb-2 edit-current" placeholder="現在病史">@patient.CurrentHistory</textarea>
+                            <textarea class="form-control mb-2 edit-past" placeholder="過去病史">@patient.PastHistory</textarea>
+                            <textarea class="form-control mb-2 edit-family" placeholder="家族病史">@patient.FamilyHistory</textarea>
+                            <textarea class="form-control mb-2 edit-drug" placeholder="藥物史">@patient.DrugHistory</textarea>
+                            <textarea class="form-control mb-2 edit-restrict" placeholder="其他病史">@patient.RestrictionRules</textarea>
+
+                            <div class="text-end mt-2">
+                                <button class="btn btn-success btn-sm me-2 save-patient-btn">儲存</button>
+                                <button class="btn btn-secondary btn-sm cancel-patient-btn">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="section-box">
+            <h3>評分檢核項目</h3>
+            <button id="add-checklist-btn" class="btn btn-custom mb-3">新增檢核項目</button>
+            <div id="checklist-container" class="d-flex flex-wrap gap-3">
+                @foreach (var item in Model.ChecklistItems ?? new List<VirtualPatDiagnosis.Models.ChecklistItem>())
+                {
+                    <div class="card checklist-card me-3 mb-3" data-id="@item.Id" style="min-width: 300px;">
+                        <!-- 🔹 顯示模式（未編輯狀態） -->
+                        <div class="display-mode">
+                            <h5 class="text-primary fw-bold">📝 @item.Name（@item.MaxScore 分）</h5>
+                            <p>@item.Description</p>
+                            <div>
+                                <strong>關鍵字：</strong>
+                                @{
+                                    var keyPhrases = JsonSerializer.Deserialize<List<KeyPhraseViewModel>>(item.KeyPhrases ?? "[]");
+                                }
+                                @foreach (var kp in keyPhrases)
+                                {
+                                    <span class="badge bg-info text-dark me-1">@kp.phrase</span>
+                                }
+                            </div>
+                            <div>
+                                <strong>評分規則：</strong>
+                                @{
+                                    var scoringRules = JsonSerializer.Deserialize<List<ScoringRuleViewModel>>(item.ScoringRules ?? "[]");
+                                }
+                                <ul>
+                                @foreach (var rule in scoringRules)
+                                {
+                                    <li>
+                                        <span class="fw-bold">@rule.Level</span>
+                                        ：@rule.Score 分
+                                        @if (!string.IsNullOrWhiteSpace(rule.Description))
+                                        {
+                                            <span>－@rule.Description</span>
+                                        }
+                                    </li>
+                                }
+                                </ul>
+                            </div>
+                            <div class="mt-2">
+                                <button class="btn btn-outline-primary btn-sm me-2 edit-btn">編輯</button>
+                                <button class="btn btn-outline-danger btn-sm delete-btn" data-id="@item.Id">刪除</button>
+                            </div>
+                        </div>
+
+                        <!-- 🔧 編輯模式（點編輯後會顯示） -->
+                        <div class="edit-mode" style="display:none;">
+                            <!-- 🔸 基本欄位 -->
+                            <input type="text" class="form-control mb-2 edit-name" value="@item.Name" />
+                            <textarea class="form-control mb-2 edit-desc">@item.Description</textarea>
+                            <input type="number" class="form-control mb-2 edit-score" value="@item.MaxScore" />
+
+                            <!-- 🔸 編輯：關鍵字欄 -->
+                           <div class="edit-keyphrases mb-2">
+                            @{
+                                var editKeyPhrases = JsonSerializer.Deserialize<List<KeyPhraseViewModel>>(item.KeyPhrases ?? "[]");
+                                foreach (var kp in editKeyPhrases)
+                                {
+                                    <div class="input-group mb-2">
+                                        <input type="text" class="form-control edit-keyphrase" value="@kp.phrase" />
+                                        <button type="button" class="btn btn-outline-danger" onclick="removeRow(this)">移除</button>
+                                    </div>
+                                }
+                            }
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addEditKeyPhrase(this)">＋新增關鍵字</button>
+
+                            <!-- 🔸 編輯：評分規則欄 -->
+                            <div class="edit-rules mb-2">
+                            @{
+                                var editScoringRules = JsonSerializer.Deserialize<List<ScoringRuleViewModel>>(item.ScoringRules ?? "[]");
+                                foreach (var rule in editScoringRules)
+                                {
+                                    <div class="row mb-2 edit-rule-row">
+                                        <div class="col-md-7">
+                                            <input type="text" class="form-control edit-rule-level" value="@rule.Level" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input type="number" class="form-control edit-rule-score" value="@rule.Score" />
+                                        </div>
+                                        <div class="col-md-2">
+                                            <button type="button" class="btn btn-outline-danger" onclick="removeRow(this)">移除</button>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addEditScoringRule(this)">＋新增規則</button>
+
+                            <!-- ✅ 儲存 / 取消 編輯按鈕 -->
+                            <div class="text-end mt-2">
+                                <button class="btn btn-success btn-sm me-2 save-edit-btn">儲存</button>
+                                <button class="btn btn-secondary btn-sm cancel-edit-btn">取消</button>
+                            </div>
+                        </div>
+
+                    </div>
+                }
+            </div>
+
+
+        </div>
+    </div>
+
+    <script>
+        let checklistIndex = 0;
+
+        function removeRow(btn) {
+            $(btn).closest('.row, .input-group').remove();
+        }
+
+        function addKeyPhrase() {
+            const html = `
+                <div class="input-group mb-2">
+                    <input type="text" class="form-control keyphrase-input" placeholder="請輸入關鍵字">
+                    <button type="button" class="btn btn-outline-danger" onclick="removeRow(this)">移除</button>
+                </div>`;
+            $('#keyphrase-container').append(html);
+        }
+
+        function addScoringRule() {
+            const html = `
+                <div class="row mb-2 scoringrule-row">
+                    <div class="col-md-7">
+                        <input type="text" class="form-control scoring-level" placeholder="層級描述">
+                    </div>
+                    <div class="col-md-3">
+                        <input type="number" class="form-control scoring-score" placeholder="分數">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-outline-danger" onclick="removeRow(this)">移除</button>
+                    </div>
+                </div>`;
+            $('#scoringrule-container').append(html);
+        }
+
+        $(document).on('click', '#add-checklist-btn', function () {
+            const html = `
+            <div class="card me-3 mb-3" style="display:none; min-width: 300px;">
+                <h5 class="text-primary fw-bold">新增檢核項目</h5>
+                <div class="form-group mb-2">
+                    <label>Name</label>
+                    <input type="text" class="form-control" id="Name_${checklistIndex}" />
+                </div>
+                <div class="form-group mb-2">
+                    <label>Description</label>
+                    <textarea class="form-control" id="Description_${checklistIndex}"></textarea>
+                </div>
+                <div class="form-group mb-2">
+                    <label>MaxScore</label>
+                    <input type="number" class="form-control" id="MaxScore_${checklistIndex}" />
+                </div>
+                <div class="form-group mb-3">
+                    <label class="fw-bold">關鍵字</label>
+                    <div id="keyphrase-container"></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="addKeyPhrase()">＋新增關鍵字</button>
+                </div>
+                <div class="form-group mb-3">
+                    <label class="fw-bold">評分規則</label>
+                    <div id="scoringrule-container"></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="addScoringRule()">＋新增規則</button>
+                </div>
+                <div class="text-end mt-3">
+                    <button type="button" class="btn btn-success btn-sm me-2 save-btn">儲存</button>
+                    <button type="button" class="btn btn-secondary btn-sm cancel-btn">取消</button>
+                </div>
+            </div>`;
+
+            const $card = $(html);
+            $('#checklist-container').append($card);
+            $card.slideDown();
+            checklistIndex++;
+        });
+
+        $(document).on('click', '.save-btn', function () {
+            const $card = $(this).closest('.card');
+            const name = $card.find('input[id^="Name_"]').val();
+            const description = $card.find('textarea[id^="Description_"]').val();
+            const maxScore = parseInt($card.find('input[id^="MaxScore_"]').val());
+            const examCaseId = @Model.Id;
+
+            const keyPhrases = [];
+            $card.find('.keyphrase-input').each(function () {
+                const val = $(this).val().trim();
+                if (val) keyPhrases.push({ phrase: val });
+            });
+
+            const scoringRules = [];
+            $card.find('.scoringrule-row').each(function () {
+                const level = $(this).find('.scoring-level').val().trim();
+                const score = parseInt($(this).find('.scoring-score').val());
+                if (level && !isNaN(score)) {
+                    scoringRules.push({ level, score });
+                }
+            });
+
+            $.ajax({
+                url: '/ChecklistItem/CreateAjax',
+                type: 'POST',
+                contentType: 'application/json',
+                headers: {
+                    'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val()
+                },
+                data: JSON.stringify({
+                    Name: name,
+                    Description: description,
+                    MaxScore: maxScore,
+                    ExamCaseId: examCaseId,
+                    KeyPhrases: keyPhrases,
+                    ScoringRules: scoringRules
+                }),
+                success: function () {
+                    location.reload();
+                },
+                error: function () {
+                    alert('儲存失敗');
+                }
+            });
+        });
+                // 🔧 點「編輯」→ 顯示 edit-mode
+        $(document).on('click', '.edit-btn', function () {
+            const $card = $(this).closest('.checklist-card');
+            $card.find('.display-mode').hide();
+            $card.find('.edit-mode').show();
+        });
+
+        // 🔧 點「取消」→ 還原回 display-mode
+        $(document).on('click', '.cancel-edit-btn', function () {
+            const $card = $(this).closest('.checklist-card');
+            $card.find('.edit-mode').hide();
+            $card.find('.display-mode').show();
+        });
+
+        // 🔧 點「刪除」→ AJAX 呼叫刪除
+        $(document).on('click', '.delete-btn', function () {
+            const $card = $(this).closest('.checklist-card');
+            const id = $(this).data('id');
+            if (!confirm('❗確定要刪除這個檢核項目嗎？')) return;
+
+            $.ajax({
+                url: '/ChecklistItem/DeleteAjax',
+                type: 'POST',
+                data: { id: id },
+                success: function (res) {
+                    if (res.success) {
+                        $card.animate({ opacity: 0, height: 0, marginBottom: 0 }, 400, function () {
+                            $card.remove();
+                        });
+                    } else {
+                        alert('刪除失敗：' + (res.message || ''));
+                    }
+                },
+                error: function () {
+                    alert('刪除失敗，請稍後再試');
+                }
+            });
+        });
+        $(document).on('click', '.save-edit-btn', function () {
+            const $card = $(this).closest('.checklist-card');
+            const id = $card.data('id');
+            const name = $card.find('.edit-name').val();
+            const desc = $card.find('.edit-desc').val();
+            const score = parseInt($card.find('.edit-score').val());
+
+            // 🔹收集關鍵字
+            const keyPhrases = [];
+            $card.find('.edit-keyphrase').each(function () {
+                const val = $(this).val().trim();
+                if (val) keyPhrases.push({ phrase: val });
+            });
+
+            // 🔹收集規則
+            const scoringRules = [];
+            $card.find('.edit-rule-row').each(function () {
+                const level = $(this).find('.edit-rule-level').val().trim();
+                const s = parseInt($(this).find('.edit-rule-score').val());
+                if (level && !isNaN(s)) scoringRules.push({ level, score: s });
+            });
+
+            $.ajax({
+                url: '/ChecklistItem/UpdateAjax',
+                type: 'POST',
+                contentType: 'application/json',
+                headers: {
+                    'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val() // 如果你有加 AntiForgeryToken
+                },
+                data: JSON.stringify({
+                    Id: id,
+                    Name: name,
+                    Description: desc,
+                    MaxScore: score,
+                    KeyPhrases: keyPhrases,
+                    ScoringRules: scoringRules
+                }),
+                success: function (res) {
+                    if (res.success) {
+                        location.reload(); // 或你要改成 update 當張卡片也行
+                    } else {
+                        alert('更新失敗：' + (res.message || ''));
+                    }
+                },
+                error: function () {
+                    alert('儲存失敗，請稍後再試');
+                }
+            });
+        });
+                // ✅ 切換進入編輯模式
+        $(document).on('click', '.edit-patient-btn', function () {
+            const card = $(this).closest('.patient-card');
+            card.find('.display-mode').hide();
+            card.find('.edit-mode').show();
+        });
+
+               $(document).on('click', '.cancel-patient-btn', function () {
+            const card = $(this).closest('.patient-card');
+
+            // 🟡 如果是新卡片（還沒資料 id），就直接移除
+            if (!card.attr('data-id')) {
+                card.remove();
+            } else {
+                card.find('.edit-mode').hide();
+                card.find('.display-mode').show();
+            }
+        });
+
+
+        // ✅ 點新增病人 → 加一張空白卡片
+        $('#add-patient-btn').on('click', function () {
+            const newCard = `
+                <div class="card patient-card me-3 mb-3" style="min-width: 300px;">
+                    <div class="edit-mode">
+                        <input type="text" class="form-control mb-2 edit-patient-name" placeholder="姓名" />
+                        <input type="number" class="form-control mb-2 edit-patient-age" placeholder="年齡" />
+                        <textarea class="form-control mb-2 edit-patient-complaint" placeholder="主訴"></textarea>
+                        <textarea class="form-control mb-2 edit-patient-current" placeholder="現在病史"></textarea>
+                        <textarea class="form-control mb-2 edit-patient-past" placeholder="過去病史"></textarea>
+                        <textarea class="form-control mb-2 edit-patient-family" placeholder="家族病史"></textarea>
+                        <textarea class="form-control mb-2 edit-patient-drug" placeholder="藥物史"></textarea>
+                        <textarea class="form-control mb-2 edit-patient-restrict" placeholder="其他病史"></textarea>
+                        <div class="text-end mt-2">
+                            <button class="btn btn-success btn-sm me-2 save-patient-btn">儲存</button>
+                            <button class="btn btn-secondary btn-sm cancel-patient-btn">取消</button>
+                        </div>
+                    </div>
+                </div>`;
+            $('#patient-container').append(newCard);
+        });
+                       $(document).on('click', '.save-patient-btn', function () {
+            const card = $(this).closest('.patient-card');
+            const id = $(this).data('id') || 0;
+
+            const name = card.find('.edit-patient-name').val().trim();
+            const age = card.find('.edit-patient-age').val().trim();
+            const complaint = card.find('.edit-patient-complaint').val().trim();
+            const current = card.find('.edit-patient-current').val().trim();
+            const past = card.find('.edit-patient-past').val().trim();
+            const family = card.find('.edit-patient-family').val().trim();
+            const drug = card.find('.edit-patient-drug').val().trim();
+            const restrict = card.find('.edit-patient-restrict').val().trim();
+
+            // ✅ 防呆提示：全空則跳出 Swal
+            if (!name && !age && !complaint && !current && !past && !family && !drug && !restrict) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: '請輸入資料',
+                    text: '請至少填寫一項欄位再儲存喔！'
+                });
+                return;
+            }
+
+            const payload = {
+                Id: id,
+                ExamCaseId: @Model.Id,
+                Name: name,
+                Age: parseInt(age) || 0,
+                Complaint: complaint,
+                CurrentHistory: current,
+                PastHistory: past,
+                FamilyHistory: family,
+                DrugHistory: drug,
+                RestrictionRules: restrict
+            };
+
+            $.ajax({
+                url: '/Patient/SaveAjax',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                success: function (res) {
+                    location.reload();
+                },
+                error: function (err) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: '儲存失敗',
+                        text: '請稍後再試一次'
+                    });
+                }
+            });
+        });
+
+               $(document).on('click', '.delete-patient-btn', function () {
+            const id = $(this).data('id');
+            const card = $(this).closest('.patient-card');
+
+            Swal.fire({
+                title: '確定要刪除嗎？',
+                text: '刪除後資料將無法恢復！',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: '確定刪除',
+                cancelButtonText: '取消'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        url: '/Patient/DeleteAjax',
+                        method: 'POST',
+                        data: { id },
+                        success: function (res) {
+                            if (res.success) location.reload();
+                            else Swal.fire('刪除失敗', '', 'error');
+                        },
+                        error: function () {
+                            Swal.fire('刪除失敗', '請稍後再試', 'error');
+                        }
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

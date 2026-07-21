@@ -1,0 +1,583 @@
+﻿@{
+    ViewBag.Title = "模擬診間互動頁";
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@ViewBag.Title</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC&display=swap" rel="stylesheet" />
+    <style>
+        body {
+            background-color: #e6f2f9;
+            font-family: "Noto Sans TC", sans-serif;
+        }
+
+        .left-panel {
+            background: #ffffff;
+            border-right: 2px solid #ccc;
+            height: 100vh;
+            padding: 1rem;
+        }
+
+        .right-panel {
+            padding: 2rem;
+            position: relative;
+        }
+
+        .patient-area {
+            position: relative;
+            text-align: center;
+        }
+
+        .patient-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            max-width: 300px; /* 限制寬度讓它能換行 */
+            font-size: 1.3rem;
+            line-height: 1.6;
+            background-color: rgba(255, 255, 255, 0.85);
+            padding: 0.6rem 1rem;
+            border-radius: 1rem;
+            font-weight: bold;
+            word-wrap: break-word;
+            white-space: normal;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+
+
+        .timer {
+            font-size: 1.3rem;
+            font-weight: 600;
+            background-color: #d0e3ff;
+            color: #204d74;
+            padding: 0.6rem 1.2rem;
+            border-radius: 1rem;
+            border: 1px solid #98c3d8;
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
+            width: fit-content;
+            margin-left: 1rem;
+            margin-left: 300px; /* ⬅️ 關鍵：讓它不擠去右邊 */
+            transform: translateX(-80px); /* ✅ 調整這邊讓它對齊病人正下方 */
+        }
+
+            .timer.warning {
+                background-color: #dc3545 !important;
+                color: #fff !important;
+                animation: flash 1s infinite;
+            }
+
+        .bottom-action {
+            position: absolute;
+            bottom: 18px;
+            left: 20px; /* ✅ 原本是 right: 20px，改成 left */
+        }
+
+        .btn-start, .btn-end {
+            font-size: 1.25rem;
+            padding: 0.6rem 1.4rem;
+            border-radius: 2rem;
+            font-family: "Noto Sans TC", sans-serif;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        /* 開始問診樣式與懸浮效果 */
+        .btn-start {
+            background-color: #5cb85c;
+            color: white;
+            border: none;
+        }
+
+            .btn-start:hover {
+                background-color: #449d44;
+                transform: scale(1.05);
+            }
+
+        /* 結束問診樣式與懸浮效果 */
+        .btn-end {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+        }
+
+            .btn-end:hover {
+                background-color: #545b62;
+                transform: scale(1.05);
+            }
+
+        #patientImg {
+            transition: transform 0.3s ease;
+            max-width: 100%;
+            height: auto;
+        }
+
+            #patientImg:hover {
+                transform: scale(1.1);
+            }
+
+        .question-block {
+            background-color: #e8f0fe;
+        }
+
+        .gpt-chat-block {
+            background-color: #f3f7ff;
+        }
+
+        .bottom-row {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center; /* 中間主要靠這個 */
+            gap: 2rem;
+        }
+
+        #gptChatContent {
+            height: 150px;
+            overflow-y: auto;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            padding: 10px;
+            resize: vertical; /* ✅ 這行讓使用者可以拉高縮小 */
+            min-height: 100px; /* ✅ 最小高度限制 */
+            max-height: 400px; /* ✅ 最大高度限制 */
+            box-sizing: border-box;
+        }
+
+        .exam-section {
+            background-color: #f7fbff;
+            border: 1px solid #cce5ff;
+        }
+
+        .exam-section, .question-block {
+            font-family: 'Noto Sans TC', 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+        }
+
+            .question-block p,
+            .exam-section p {
+                color: #1c2b39;
+                font-weight: 600;
+                font-size: 1.05rem;
+                line-height: 1.8;
+            }
+
+                .exam-section p span.text-muted {
+                    color: #1c2b39 !important;
+                    font-weight: 600;
+                }
+
+            .exam-section h5, .question-block h5 {
+                font-weight: 700;
+                font-size: 1.25rem;
+            }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-3 left-panel">
+                <div class="question-block p-3 mb-3 rounded shadow-sm">
+                    <h5 class="fw-bold mb-2">題目資訊</h5>
+                    <p style="font-weight: normal;">
+                        <strong>背景資料：</strong><br/>
+                        @Model.Background<br/>
+                        <strong>測驗主題：</strong><br/>
+                        @Html.Raw(Model.Topic.Replace("\n", "<br/>"))
+                    </p>
+                </div>
+                <div class="exam-section p-3 mt-3 rounded shadow-sm">
+                    <h5 class="fw-bold mb-2">檢驗項目</h5>
+                    <p>
+                        @if (ViewBag.ExamContent != null && !string.IsNullOrWhiteSpace(ViewBag.ExamContent))
+                        {
+                            @Html.Raw(ViewBag.ExamContent.Replace("\n", "<br>"))
+                        }
+                        else
+                        {
+                            <span class="text-muted">無需檢查</span>
+                        }
+                    </p>
+
+                </div>
+
+                <div class="mt-3">
+                    <button id="toggleGptChat" class="btn btn-outline-primary mb-2">
+                        👁️‍🗨️ 顯示即時問答區
+                    </button>
+                </div>
+
+                <div id="gptChatPanel" class="gpt-chat-block w-100 p-3 mt-4 rounded shadow-sm" style="display: none;">
+                    <h6 class="fw-bold mb-2">🧠 GPT 即時問答聊天室</h6>
+                    <div id="gptChatContent" style="height: 150px; overflow-y: auto; background: #fff; border: 1px solid #ccc; border-radius: 10px; padding: 10px;"></div>
+                    <input type="text" class="form-control mt-2" id="gptInput" placeholder="輸入你的問題..." disabled />
+                </div>
+
+                <button id="btnVoiceInput" class="btn btn-outline-primary btn-sm mt-2" disabled>🎙 語音輸入</button>
+                <span id="voiceStatus" class="ms-2 small text-muted"></span>
+            </div>
+
+            <div class="col-md-9 right-panel">
+    <div class="patient-area">
+        <!-- 使用 Url.Content 確保後端傳過來的圖片路徑能被正確轉換，若後端為空則自動拿 ~/images/patient.png 當作防呆預設 -->
+        <img src="@Url.Content(ViewBag.PatientImage ?? "~/images/patient.png")" alt="病人圖像" style="max-height: 500px; width: 500px;" id="patientImg" />
+
+        <div class="patient-info" id="patientInfo">
+            <!-- 這裡維持留空，由底部的 JS 自動填入年齡性別與 ViewBag.PatientStatusText -->
+        </div>
+    </div>
+
+
+
+                <div class="bottom-row justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-3">
+                        <button class="btn btn-start" id="startBtn">開始問診</button>
+                        <button class="btn btn-end" id="endBtn">結束問診</button>
+                    </div>
+                    <div class="timer mx-auto" id="timerDisplay">剩餘時間：08:00</div>
+                </div>
+
+
+
+               
+            </div>
+        </div>
+
+      
+    </div>
+
+                         <!-- 🏆 完全回歸你原本的本機環境，不載入任何外網 CDN，絕不卡死 -->
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+
+    <script>
+        let totalSeconds = 480; 
+        let timer;
+        let gptScoreResults = [];
+        let lastGptResponse = null;
+        let consultationStartTime = null;
+        let isUrgentMusicPlaying = false;
+        let isConsultationStarted = false;
+
+        // ⏱️ 1. 計時器主邏輯：時間到直接鎖定輸入、彈出內建提示、自動提交
+        function startTimer() {
+            timer = setInterval(() => {
+                if (totalSeconds <= 0) {
+                    clearInterval(timer);
+                    $('#timerDisplay').removeClass('warning').text("時間到！");
+                    
+                    // 🔒 1. 時間到，立刻鎖定輸入框與麥克風
+                    $('#gptInput').prop('disabled', true);
+                    $('#btnVoiceInput').prop('disabled', true);
+                    isConsultationStarted = false;
+
+                    // 🚨 2. 直接彈出瀏覽器內建最穩定的提示視窗，按確定立刻自動跳轉結算頁
+                    alert("時間到！測驗結束。點擊確認將為您結算本次問診成績。");
+                    autoSubmitExam();
+                   
+                    return;
+                }
+
+                totalSeconds--;
+                let min = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+                let sec = String(totalSeconds % 60).padStart(2, '0');
+                $('#timerDisplay').text(`剩餘時間：${min}:${sec}`);
+
+                if (totalSeconds <= 10 && !isUrgentMusicPlaying) {
+                    isUrgentMusicPlaying = true;
+                    $('#timerDisplay').addClass('warning');
+                }
+            }, 1000);
+        }
+
+        // 🚀 2. 自動提交成績的獨立函式 (與你的結束按診按鈕邏輯一模一樣)
+        function autoSubmitExam() {
+            var examCaseId = @Model.ExamCaseId;
+            var finalResults = gptScoreResults.length ? gptScoreResults : [];
+
+            $.post('/Home/SubmitExam', {
+                examCaseId: examCaseId,
+                gptResult: JSON.stringify(finalResults),
+                startTime: consultationStartTime ? consultationStartTime.toISOString() : null
+            }, function (res) {
+                if (res.redirectUrl) {
+                    window.location.href = res.redirectUrl; // 成功跳轉至成績報告頁
+                } else {
+                    alert("問診結束，作答已送出。");
+                }
+            }).fail(function () {
+                alert("送出失敗，連線異常。");
+            });
+        }
+
+        // 🔘 3. 開始問診按鈕點擊事件（動態解析資料庫教案時間欄位）
+        $(document).ready(function () {
+            $('#startBtn').click(function () {
+                if (isConsultationStarted) {
+                    alert("問診已經開始，請勿重複開始。");
+                    return;
+                }
+                else {
+                    isConsultationStarted = true;
+                    consultationStartTime = new Date();
+
+                    let timeLimitMinutes = parseInt("@Model.Time".replace("分鐘", ""), 10);
+                    totalSeconds = (!isNaN(timeLimitMinutes)) ? (timeLimitMinutes * 60) : 480;
+
+                    // 🎯 快打測試：如果現在要測試功能，可以把下面這行的「//」刪掉：
+                    // totalSeconds = 5; 
+
+                    startTimer();
+
+                    $('#patientImg').fadeOut(100).fadeIn(100);
+                    $('#gptInput').prop('disabled', false);
+                    $('#btnVoiceInput').prop('disabled', false);
+                }
+            });
+
+            // 🛑 4. 手動結束問診按鈕點擊事件
+            $('#endBtn').click(function () {
+                if (!isConsultationStarted) {
+                    alert("問診尚未開始，無法結束。");
+                    return;
+                } else {
+                    isConsultationStarted = false;
+                    clearInterval(timer);
+
+                    if (!gptScoreResults.length) {
+                        alert("尚未取得 GPT 評分，請先進行問答。");
+                        isConsultationStarted = true;
+                        startTimer();
+                        return;
+                    }
+
+                    autoSubmitExam(); 
+                    $('#gptInput').prop('disabled', true);
+                    $('#btnVoiceInput').prop('disabled', true);
+                }
+            });
+
+            // 👁️‍🗨️ 5. 顯示/隱藏即時問答區
+            let isVisible = false;
+            $('#toggleGptChat').on('click', function () {
+                $('#gptChatPanel').slideToggle(200);
+                isVisible = !isVisible;
+                $(this).text(isVisible ? '🙈 收起 GPT 問答區' : '👁️‍🗨️ 顯示 GPT 問答區');
+            });
+        });
+
+        // 🔊 6. 語音撥放 TTS 函式
+        async function speakTTS(text) {
+            try {
+                const res = await fetch('/Python/TTS', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'text=' + encodeURIComponent(text)
+                });
+                if (!res.ok) return;
+                const json = await res.json();
+                const audio = new Audio(json.audioUrl);
+                audio.play();
+            } catch (err) {
+                console.error("TTS 播放失敗：", err);
+            }
+        }
+
+        // 🧠 7. GPT 對話發送與動態評分處理（帶入正確的教案 ExamCaseId）
+        let chatHistoryTurns = [];
+
+        $(document).on('keypress', '#gptInput', async function (e) {
+            if (e.which === 13 && this.value.trim() !== "") {
+                const userMsg = this.value.trim();
+                chatHistoryTurns.push({ role: "考生", content: userMsg });
+
+                $('#gptChatContent').append(`<div><strong>👤 你：</strong> ${userMsg}</div>`);
+                this.value = "";
+                $('#gptChatContent').append(`<div id="gptLoading">🤖 GPT 正在輸入中...</div>`);
+
+                try {
+                    const examCaseId = "@Model.ExamCaseId";
+                    let formattedChat = chatHistoryTurns.map(turn => `- ${turn.role}：${turn.content}`).join("\n");
+                    let payload = { chatHistory: formattedChat, chatQuestion: userMsg };
+
+                    // 1. 先送 AskResponse
+                    const resResp = await fetch(`/Gpt/AskResponse?examCaseId=${examCaseId}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+                    $('#gptLoading').remove();
+
+                    if (!resResp.ok) {
+                        const text = await resResp.text();
+                        $('#gptChatContent').append(`<div class="text-danger">❌ 回應失敗：${text}</div>`);
+                        return;
+                    }
+                    const respData = await resResp.json();
+                    const reply = respData.response || "⚠️ 找不到 response 欄位";
+                    chatHistoryTurns.push({ role: "病人", content: reply });
+                    $('#gptChatContent').append(`<div><strong>🤖 GPT：</strong> ${reply}</div>`);
+                    await speakTTS(reply);
+
+                    // 2. 再送 AskScoring
+                    formattedChat = chatHistoryTurns.map(turn => `- ${turn.role}：${turn.content}`).join("\n");
+                    payload = { chatHistory: formattedChat, chatQuestion: userMsg };
+                    fetch(`/Gpt/AskScoring?examCaseId=${examCaseId}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    })
+                    .then(res => res.json())
+                    .then(scoringArr => {
+                        scoringArr.forEach(item => {
+                            if (item.id) {
+                                const idx = gptScoreResults.findIndex(x => x.id === item.id);
+                                if (idx >= 0) {
+                                    if (item.score > gptScoreResults[idx].score) gptScoreResults[idx] = item;
+                                } else {
+                                    gptScoreResults.push(item);
+                                }
+                            }
+                        });
+                    })
+                    .catch(err => {
+                        $('#gptChatContent').append(`<div class="text-danger">❌ 評分失敗：${err.message || err}</div>`);
+                    });
+
+                } catch (err) {
+                    $('#gptLoading').remove();
+                    $('#gptChatContent').append(`<div class="text-danger">❌ 發生錯誤：${err.message || err}</div>`);
+                }
+            }
+        });
+
+        // 🎙️ 8. 麥克風語音辨識
+        let recognition;
+        let recognizing = false;
+
+        $(document).on('click', '#btnVoiceInput', function () {
+            if (!('webkitSpeechRecognition' in window)) {
+                alert('你的瀏覽器不支援語音辨識 (SpeechRecognition)，請改用 Chrome 或 Edge 瀏覽器。');
+                return;
+            }
+
+            // 防止使用者連續點擊，同時開啟好幾個 recognition
+            if (recognizing) {
+                return;
+            }
+
+            // Web Speech API 需要「安全連線」(https，或本機 localhost) 才能拿到麥克風權限，
+            // 如果是用一般 http:// 開部署在區網主機上，瀏覽器會直接拒絕權限，
+            // 表現出來就是一直出現 no-speech 或完全沒反應。
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+                $('#voiceStatus').text('⚠️ 目前網址不是 https，瀏覽器可能會擋麥克風權限').removeClass('text-muted').addClass('text-danger');
+            }
+
+            recognition = new webkitSpeechRecognition();
+            recognition.lang = 'zh-TW';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = function () {
+                recognizing = true;
+                $('#btnVoiceInput').prop('disabled', true).text('🎙 聆聽中…');
+                $('#voiceStatus').text('請開始說話').removeClass('text-danger').addClass('text-muted');
+            };
+
+            recognition.onresult = function (event) {
+                // ✅ 100% 精確的二維陣列抓取格式，徹底消滅點號錯誤 Bug
+                const transcript = event.results[0][0].transcript;
+                $('#gptInput').val(transcript).focus();
+                $('#gptInput').trigger(jQuery.Event('keypress', { which: 13 }));
+            };
+
+            recognition.onerror = function (event) {
+                if (event.error === 'no-speech') {
+                    // 常見情況：使用者按了按鈕但沒即時開口，或講話音量太小沒被偵測到，
+                    // 不算是系統錯誤，不用彈出 alert 打斷流程，用文字提示 + 讓使用者可以直接再按一次即可。
+                    $('#voiceStatus').text('沒有偵測到聲音，請再按一次「語音輸入」試試看').removeClass('text-muted').addClass('text-danger');
+                    return;
+                }
+
+                const errorMessages = {
+                    'audio-capture': '偵測不到麥克風，請確認麥克風已連接、且瀏覽器有拿到裝置權限',
+                    'not-allowed': '麥克風權限被拒絕，請到瀏覽器網址列旁邊的權限設定裡允許使用麥克風',
+                    'network': '語音辨識連線失敗，請檢查網路連線',
+                    'aborted': '語音辨識已中斷'
+                };
+                const msg = errorMessages[event.error] || ('語音辨識錯誤：' + event.error);
+                $('#voiceStatus').text(msg).removeClass('text-muted').addClass('text-danger');
+            };
+
+            recognition.onend = function () {
+                recognizing = false;
+                // 如果問診已經結束（時間到或手動結束），按鈕本來就該保持鎖定，不要因為語音辨識結束就重新打開
+                if (isConsultationStarted) {
+                    $('#btnVoiceInput').prop('disabled', false).text('🎙 語音輸入');
+                } else {
+                    $('#btnVoiceInput').text('🎙 語音輸入');
+                }
+            };
+
+            recognition.start();
+        });
+
+        // 🔢 9. 國字轉數字輔助工具
+        function convertChineseToNumber(chineseNum) {
+            const map = { '零': 0, '一': 1, '二': 2, '兩': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+            let result = 0, temp = 0;
+            for (let ch of chineseNum) {
+                if (map.hasOwnProperty(ch)) {
+                    temp = map[ch];
+                } else if (ch === '十') {
+                    result += (temp || 1) * 10;
+                    temp = 0;
+                } else if (ch === '百') {
+                    result += (temp || 1) * 100;
+                    temp = 0;
+                }
+            }
+                        result += temp;
+            return result || null;
+        }
+
+        // 👧 10. 初始化網頁解析病人資訊（動態接收狀態文字、校正反引號與陣列索引）
+        document.addEventListener("DOMContentLoaded", function () {
+            const bgText = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Background ?? ""));
+            const ageMatch = bgText.match(/(?:(\d+)|([零一二兩三四五六體八九十百]))\s*歲/);
+            let age = null;
+
+            if (ageMatch) {
+                if (ageMatch[1]) {
+                    // ✅ 完美修復：補回樣板字串專用的反引號
+                    age = `${ageMatch[1]} 歲`;
+                } else if (ageMatch[2]) {
+                    const n = convertChineseToNumber(ageMatch[2]);
+                    if (n !== null) {
+                        // ✅ 完美修復：補回樣板字串專用的反引號
+                        age = `${n} 歲`;
+                    }
+                }
+            }
+
+            let gender = null;
+            if (bgText.includes("女")) gender = "女";
+            else if (bgText.includes("男")) gender = "男";
+
+            const icon = gender === "女" ? "👧" : gender === "男" ? "👦" : "👤";
+            const infoBox = document.getElementById("patientInfo");
+
+            if (infoBox) {
+                // ✅ 完美修復：補齊三元運算子的反引號與對稱括號
+                let line1 = (age || gender) ? `${icon} ${(gender ?? "")}${age ? " / " + age : ""}` : icon;
+                const statusText = "@ViewBag.PatientStatusText";
+                infoBox.innerHTML = `${line1}<br>${statusText}`;
+            }
+        });
+            </script>
+</body>
+</html>
+

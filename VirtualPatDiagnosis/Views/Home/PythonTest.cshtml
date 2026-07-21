@@ -1,0 +1,66 @@
+﻿@{
+    ViewData["Title"] = "Python測試";
+}
+
+<h2>STT 測試</h2>
+<form asp-controller="Python" asp-action="Transcribe" method="post" enctype="multipart/form-data">
+    <input type="file" name="audioFile" />
+    <button type="submit">上傳並轉換文字</button>
+</form>
+
+<hr />
+
+<h2>TTS 測試</h2>
+<form id="ttsForm" method="post">
+    <input type="text" name="text" id="ttsText" value="您好，請問您哪裡不舒服？" />
+    <button type="button" onclick="doTTS()">產生語音</button>
+</form>
+
+<p id="ttsStatus" style="margin-top:10px;"></p>
+
+<audio id="audioPlayer" controls style="margin-top:10px; display: none;"></audio>
+
+<script>
+    async function doTTS() {
+        const text = document.getElementById("ttsText").value.trim();
+        const status = document.getElementById("ttsStatus");
+        const audio = document.getElementById("audioPlayer");
+
+        status.textContent = "";
+        audio.src = "";
+
+        if (!text) {
+            status.style.color = "red";
+            status.textContent = "⚠️ 請先輸入要轉換的文字。";
+            return;
+        }
+
+        status.style.color = "black";
+        status.textContent = "🔄 正在轉換中，請稍候...";
+
+        try {
+            const res = await fetch('/Python/TTS', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'text=' + encodeURIComponent(text)
+            });
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                status.style.color = "red";
+                status.textContent = "❌ 錯誤：" + errorText;
+                return;
+            }
+
+            const json = await res.json();
+            status.style.color = "green";
+            status.textContent = "✅ 轉換成功，正在播放語音。";
+            audio.src = json.audioUrl;
+            audio.style.display = "block";
+            audio.play();
+        } catch (err) {
+            status.style.color = "red";
+            status.textContent = "❌ 發生系統錯誤：" + err.message;
+        }
+    }
+</script>

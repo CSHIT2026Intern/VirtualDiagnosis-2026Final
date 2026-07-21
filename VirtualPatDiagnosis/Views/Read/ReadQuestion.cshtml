@@ -1,0 +1,124 @@
+﻿@model VirtualPatDiagnosis.Models.QuestionViewModel
+@{
+    ViewData["Title"] = "讀題時間";
+}
+
+<style>
+    .read-container {
+        height: 100vh;
+        background-color: #f0f4f8;
+        color: #1a1a1a;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+        font-family: 'Segoe UI', sans-serif;
+    }
+
+    .question-box {
+        text-align: center;
+        max-width: 60%;
+        background-color: #ffffff;
+        border: 2px solid #c5d2e0;
+        border-radius: 16px;
+        padding: 30px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .question-title {
+        font-size: 28px;
+        font-weight: bold;
+        margin-bottom: 20px;
+    }
+
+    .question-content {
+        font-size: 22px;
+        font-weight: bold;
+        line-height: 1.8;
+        letter-spacing: 0.5px;
+        text-align: left;
+        white-space: pre-line;
+    }
+
+    .timer {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        font-size: 48px;
+        font-weight: bold;
+        color: #2a5d91;
+    }
+
+    .overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255, 255, 255, 0.9);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 36px;
+        font-weight: bold;
+        color: #2c3e50;
+        z-index: 10;
+        opacity: 0;
+        transition: opacity 1s ease-in;
+    }
+
+    .overlay.hidden {
+        display: none;
+    }
+</style>
+
+<div class="read-container">
+    <div class="question-box">
+        <!-- 這裡完全還原你最原始的排版欄位與格式 -->
+        <h1 class="question-title">@Model.Guideline</h1>
+        <p class="question-content">
+            @Model.Background
+
+            <strong>測驗主題：</strong>
+            @Html.Raw(Model.Topic)
+
+            <strong>測驗時間：</strong>@Model.Time
+        </p>
+    </div>
+
+    <!-- 倒數計時器 -->
+    <div id="timer" class="timer">02:00</div>
+
+    <!-- 時間到的過渡遮罩 -->
+    <div id="transition-overlay" class="overlay hidden">
+        <h2>時間到，開始問診</h2>
+    </div>
+</div>
+
+<script>
+    let totalTime = 10; // 測試用 10 秒，正式運作時可改回你需要的時間
+    const timerEl = document.getElementById("timer");
+    const overlay = document.getElementById("transition-overlay");
+
+    const countdown = setInterval(() => {
+        const min = String(Math.floor(totalTime / 60)).padStart(2, '0');
+        const sec = String(totalTime % 60).padStart(2, '0');
+        timerEl.textContent = `${min}:${sec}`;
+
+        if (totalTime <= 0) {
+            clearInterval(countdown);
+            overlay.classList.remove("hidden");
+            setTimeout(() => {
+                overlay.style.opacity = 1;
+                setTimeout(() => {
+                    // 【動態接力】：夾帶當前資料庫的 ExamCaseId 進入主診間
+                    const examCaseId = "@Model.ExamCaseId";
+                    window.location.href = `/Home/Index?examCaseId=${examCaseId}`; 
+                }, 2000);
+            }, 100);
+        }
+
+        totalTime--;
+    }, 1000);
+</script>

@@ -1,0 +1,84 @@
+@model List<VirtualPatDiagnosis.Models.ExamCase> 
+@* 👆 這裡的 ExamCase 請換成你專案中對應的資料庫模型名稱 *@
+@{
+    ViewData["Title"] = "選擇教案案例";
+}
+
+<style>
+    .select-body {
+        min-height: 100vh;
+        background-color: #f4f7f6;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        font-family: 'Microsoft JhengHei', sans-serif;
+    }
+    .select-title {
+        color: #2c3e50;
+        margin-bottom: 40px;
+        font-weight: bold;
+    }
+    .card-container {
+        display: flex;
+        gap: 25px;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 80%;
+    }
+    .case-card {
+        background: #ffffff;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 30px;
+        width: 320px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-align: center;
+    }
+    .case-card:hover {
+        transform: translateY(-5px);
+        border-color: #3498db;
+        box-shadow: 0 10px 20px rgba(52,152,219,0.15);
+    }
+    .case-title {
+        font-size: 22px;
+        font-weight: bold;
+        color: #34495e;
+        margin-bottom: 15px;
+    }
+    .case-desc {
+        color: #7f8c8d;
+        font-size: 14px;
+        margin-bottom: 20px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden; /* 避免敘述太長破壞排版 */
+    }
+    .enter-btn {
+        background-color: #3498db;
+        color: white;
+        border: none;
+        padding: 10px 25px;
+        border-radius: 20px;
+        font-weight: bold;
+    }
+</style>
+
+<div class="select-body">
+    <h1 class="select-title">請選擇今日欲測驗的教案案例</h1>
+    
+    <div class="card-container">
+        <!-- 核心動態化：從資料庫撈出幾筆，畫面上就自動顯示幾筆 -->
+        @foreach (var item in Model)
+        {
+            <div class="case-card" onclick="location.href='/Read/ReadQuestion?caseId=@item.Id'">
+                <div class="case-title">@item.Title</div>
+                <div class="case-desc">@item.Description</div>
+                <button class="enter-btn">開始讀題</button>
+            </div>
+        }
+    </div>
+</div>

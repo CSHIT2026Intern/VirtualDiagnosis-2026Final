@@ -1,0 +1,228 @@
+﻿@model VirtualPatDiagnosis.Models.ExamCase
+@using VirtualPatDiagnosis.Models
+@{
+    var cases = ViewBag.ExistingCases as List<ExamCase>;
+}
+@Html.AntiForgeryToken()
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<div class="container mt-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2 bg-light p-3 rounded shadow-sm">
+        <div class="text-primary fw-bold fs-5">
+            👋 您好 @User.Identity?.Name，歡迎登入題目管理系統～
+        </div>
+        <div>
+            <form asp-controller="Account" asp-action="Logout" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-danger btn-sm">
+                    <i class="fa-solid fa-right-from-bracket"></i> 登出
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-5">
+    <div class="form-section border p-4 rounded bg-white shadow-sm">
+        <h2 class="text-primary"><i class="fa-solid fa-file-pen"></i> 建立題組</h2>
+
+        @if (TempData["Error"] is string error)
+        {
+            <div class="alert alert-danger" role="alert" style="white-space: pre-line;">@error</div>
+        }
+        @if (TempData["Success"] is string success)
+        {
+            <div class="alert alert-success" role="alert">@success</div>
+        }
+
+        <form action="/ExamCase/ImportFromDocument" enctype="multipart/form-data" method="post" style="display:inline;">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-success">以 Word／PDF 匯入</button>
+            <input type="file" name="documentFile" accept=".docx,.pdf,application/pdf" required />
+            <small class="text-muted d-block mt-1">支援 .docx 與可選取文字的 PDF；PDF 匯出後即使換行格式不同也可辨識。掃描型 PDF 仍需先做 OCR。</small>
+        </form>
+        <br>
+
+        <form id="form-step1">
+            <input type="hidden" id="editingId" name="Id" value="" />
+            <div class="form-group mb-3">
+                <label asp-for="Title"></label>
+                <input class="form-control" id="Title" name="Title" />
+                <div class="invalid-feedback d-block text-danger" data-error-for="Title"></div>
+            </div>
+
+            <div class="form-group mb-3">
+                <label asp-for="Description"></label>
+                <textarea class="form-control" id="Description" name="Description"></textarea>
+                <div class="invalid-feedback d-block text-danger" data-error-for="Description"></div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <label asp-for="PassScore"></label>
+                    <input class="form-control" id="PassScore" name="PassScore" />
+                    <div class="invalid-feedback d-block text-danger" data-error-for="PassScore"></div>
+                </div>
+
+                <div class="col-md-6">
+                    <label asp-for="TimeLimit"></label>
+                    <div class="input-group">
+                        <input class="form-control" id="TimeLimit" name="TimeLimit" />
+                        <span class="input-group-text">分鐘</span>
+                    </div>
+                    <div class="invalid-feedback d-block text-danger" data-error-for="TimeLimit"></div>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button id="saveButton" type="submit" class="btn btn-success mt-4 px-4">
+                    <i class="fa-solid fa-floppy-disk me-1"></i> 儲存
+                </button>
+                <button id="clearButton" type="button" class="btn btn-secondary mt-4 px-4 ms-2" onclick="clearForm()">清空</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="table-wrapper mt-5">
+        <h4 class="text-center"><i class="fa-solid fa-list"></i> 題組總覽</h4>
+        <div id="case-table-content">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>標題</th>
+                        <th>建立者</th>
+                        <th>建立時間</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="case-tbody">
+                    @foreach (var c in cases)
+                    {
+                        <tr>
+                            <td>@c.Title</td>
+                            <td>@(c.CreatedByUser?.DisplayName ?? "未知")</td>
+                            <td>@c.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>
+                                <a href="/ExamCase/Details/@c.Id" class="btn btn-sm btn-info">查看</a>
+                                <button class="btn btn-sm btn-warning" onclick="editCase(@c.Id, '@c.Title', '@c.Description', @c.PassScore, @c.TimeLimit)">編輯</button>
+                                <button class="btn btn-sm btn-danger" onclick="confirmDelete(@c.Id, '@c.Title')">刪除</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    function clearForm() {
+        $('#editingId').val('');
+        $('#form-step1')[0].reset();
+        $('#saveButton i').removeClass('fa-pencil fa-plus').addClass('fa-floppy-disk');
+        $('#saveButton').html('<i class="fa-solid fa-floppy-disk me-1"></i> 儲存');
+    }
+
+    function editCase(id, title, desc, score, time) {
+        $('#editingId').val(id);
+        $('#Title').val(title);
+        $('#Description').val(desc);
+        $('#PassScore').val(score);
+        $('#TimeLimit').val(time);
+        $('#saveButton i').removeClass('fa-floppy-disk fa-plus').addClass('fa-pencil');
+        $('#saveButton').html('<i class="fa-solid fa-pencil me-1"></i> 更新');
+    }
+
+    function showValidationErrors(errors) {
+        $('[data-error-for]').text('');
+        for (const key in errors) {
+            const messages = errors[key];
+            const target = $('[data-error-for="' + key + '"]');
+            if (target.length) {
+                target.html(messages.join('<br>'));
+            }
+        }
+    }
+
+    $(function () {
+        $('#Title').on('focus', function () {
+            clearForm();
+            $('#saveButton i').removeClass('fa-pencil fa-floppy-disk').addClass('fa-plus');
+            $('#saveButton').html('<i class="fa-solid fa-plus me-1"></i> 新增');
+        });
+
+        $('#form-step1').submit(function (e) {
+            e.preventDefault();
+            $('[data-error-for]').text('');
+
+            const token = $('input[name="__RequestVerificationToken"]').val();
+            const id = $('#editingId').val();
+
+            const formObject = {
+                Id: id || 0,
+                Title: $('#Title').val().trim(),
+                Description: $('#Description').val().trim(),
+                PassScore: parseInt($('#PassScore').val()) || 0,
+                TimeLimit: parseInt($('#TimeLimit').val()) || 0
+            };
+
+            const url = id ? '/ExamCase/UpdateAjax' : '/ExamCase/CreateAjax';
+
+            $.ajax({
+                url: url,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(formObject),
+                headers: {
+                    'RequestVerificationToken': token
+                },
+                success: function (res) {
+                    if (res.success) {
+                        location.reload();
+                    } else {
+                        if (res.errors) {
+                            showValidationErrors(res.errors);
+                        } else {
+                            alert(res.message || res.error || '建立/更新失敗');
+                        }
+                    }
+                },
+                error: function (xhr) {
+                    console.error(xhr);
+                    alert('操作失敗，伺服器錯誤：' + xhr.responseText);
+                }
+            });
+        });
+
+        $('#clearButton').click(clearForm);
+    });
+
+    function confirmDelete(id, title) {
+        Swal.fire({
+            title: '確定要刪除？',
+            text: `這將永久刪除「${title}」這筆題組資料。`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: '確定刪除',
+            cancelButtonText: '取消'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $.post(`/ExamCase/Delete/${id}`, {
+                    __RequestVerificationToken: $('input[name="__RequestVerificationToken"]').val()
+                }).done(() => {
+                    Swal.fire('已刪除！', '該題組已成功刪除。', 'success').then(() => {
+                        location.reload();
+                    });
+                }).fail((xhr) => {
+                    Swal.fire('錯誤', '刪除失敗：' + xhr.responseText, 'error');
+                });
+            }
+        });
+    }
+</script>

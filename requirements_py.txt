@@ -1,0 +1,6 @@
+openai-whisper
+ffmpeg-python
+pydub
+edge-tts
+numpy
+soundfile
